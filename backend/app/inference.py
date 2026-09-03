@@ -5,16 +5,40 @@ from typing import List, Dict, Any
 
 from PIL import Image
 
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEIGHTS_DIR = os.path.join(BACKEND_DIR, "weights")
 
+# IMPORTANT:
+# Free Render has only 512 MB RAM.
+# Keep ML disabled there unless you move to a larger instance.
+#
+# To enable real models locally:
+# Windows:
+#   set NYPIEL_ENABLE_ML=true
+#
+# Render:
+#   NYPIEL_ENABLE_ML=false
+#
+ENABLE_ML = os.getenv("NYPIEL_ENABLE_ML", "false").lower() == "true"
+
+
+# ============================================================
+# MODEL FILE SEARCH
+# ============================================================
 
 def _find_model_file(*names: str) -> str | None:
     for base in (BACKEND_DIR, WEIGHTS_DIR):
         for name in names:
             path = os.path.join(base, name)
+
             if os.path.exists(path):
                 return path
+
     return None
 
 
@@ -25,6 +49,7 @@ SKIN_TYPE_WEIGHTS = _find_model_file(
     "skin_type.pth",
 ) or os.path.join(WEIGHTS_DIR, "skin_type.pt")
 
+
 CONCERN_WEIGHTS = _find_model_file(
     "best.pt",
     "skin_concerns.pt",
@@ -33,7 +58,17 @@ CONCERN_WEIGHTS = _find_model_file(
 ) or os.path.join(WEIGHTS_DIR, "skin_concerns.pt")
 
 
-SKIN_TYPES = ["combination", "dry", "normal", "oily"]
+# ============================================================
+# CLASSES
+# ============================================================
+
+SKIN_TYPES = [
+    "combination",
+    "dry",
+    "normal",
+    "oily",
+]
+
 
 CONCERN_CLASSES = [
     "acne",
@@ -49,21 +84,34 @@ CONCERN_CLASSES = [
 ]
 
 
-# Models are NOT loaded during startup.
+# ============================================================
+# MODEL VARIABLES
+# ============================================================
+
 _skin_type_model = None
 _skin_type_device = None
+
 _concern_model = None
 
 
+# ============================================================
+# LABEL NORMALIZATION
+# ============================================================
+
 def normalize_concern_label(raw_name: str) -> str:
+
     cleaned = (
-        raw_name.strip()
+        raw_name
+        .strip()
         .lower()
         .replace("-", "_")
         .replace(" ", "_")
     )
 
-    if cleaned in ("englarged_pores", "enlarged_pores"):
+    if cleaned in (
+        "englarged_pores",
+        "enlarged_pores",
+    ):
         return "large_pores"
 
     if cleaned == "skin_redness":
@@ -72,41 +120,89 @@ def normalize_concern_label(raw_name: str) -> str:
     return cleaned
 
 
+# ============================================================
+# STARTUP
+# ============================================================
+
 def load_models():
     """
-    Lightweight startup function.
+    Do NOT load PyTorch or YOLO during application startup.
 
-    We deliberately do NOT load PyTorch/YOLO here because
-    Render's 512 MB RAM can be exceeded during startup.
-    Models are loaded only when first needed.
+    On Render Free (512 MB RAM), ML is disabled by default.
+
+    This function only prints model information.
     """
-    print("[nypiel] Model loading deferred until first prediction.")
+
+    print("[nypiel] Server started.")
+
+    if not ENABLE_ML:
+        print(
+            "[nypiel] ML models are DISABLED. "
+            "Using lightweight fallback predictions."
+        )
+        return
+
+    print("[nypiel] ML models are ENABLED.")
 
     if os.path.exists(SKIN_TYPE_WEIGHTS):
-        print(f"[nypiel] Skin-type model found: {SKIN_TYPE_WEIGHTS}")
+        print(
+            f"[nypiel] Skin-type model found: "
+            f"{SKIN_TYPE_WEIGHTS}"
+        )
     else:
-        print(f"[nypiel] Skin-type model NOT found: {SKIN_TYPE_WEIGHTS}")
+        print(
+            f"[nypiel] Skin-type model NOT found: "
+            f"{SKIN_TYPE_WEIGHTS}"
+        )
 
     if os.path.exists(CONCERN_WEIGHTS):
-        print(f"[nypiel] Concern model found: {CONCERN_WEIGHTS}")
+        print(
+            f"[nypiel] Concern model found: "
+            f"{CONCERN_WEIGHTS}"
+        )
     else:
-        print(f"[nypiel] Concern model NOT found: {CONCERN_WEIGHTS}")
+        print(
+            f"[nypiel] Concern model NOT found: "
+            f"{CONCERN_WEIGHTS}"
+        )
 
+
+# ============================================================
+# LOAD SKIN TYPE MODEL
+# ============================================================
 
 def _load_skin_type_model():
-    global _skin_type_model, _skin_type_device, SKIN_TYPES
 
+    global _skin_type_model
+    global _skin_type_device
+    global SKIN_TYPES
+
+    # ML disabled
+    if not ENABLE_ML:
+        return False
+
+    # Already loaded
     if _skin_type_model is not None:
         return True
 
+    # Model doesn't exist
     if not os.path.exists(SKIN_TYPE_WEIGHTS):
-        print("[nypiel] Skin-type weights not found.")
+
+        print(
+            "[nypiel] Skin-type weights not found. "
+            "Using fallback."
+        )
+
         return False
 
     try:
+
+        print(
+            "[nypiel] Loading skin-type model..."
+        )
+
         import torch
 
-        # Render is CPU.
         _skin_type_device = "cpu"
 
         loaded = torch.load(
@@ -115,35 +211,65 @@ def _load_skin_type_model():
             weights_only=False,
         )
 
+        # ----------------------------------------------------
+        # Full PyTorch model
+        # ----------------------------------------------------
+
         if hasattr(loaded, "eval"):
-            _skin_type_model = loaded.to("cpu").eval()
-            print("[nypiel] Loaded skin-type full model.")
+
+            _skin_type_model = (
+                loaded
+                .to("cpu")
+                .eval()
+            )
+
+            print(
+                "[nypiel] Loaded skin-type full model."
+            )
+
             return True
+
+        # ----------------------------------------------------
+        # State dictionary
+        # ----------------------------------------------------
 
         if isinstance(loaded, dict):
 
-            if "classes" in loaded and isinstance(loaded["classes"], list):
+            if (
+                "classes" in loaded
+                and isinstance(loaded["classes"], list)
+            ):
                 SKIN_TYPES = loaded["classes"]
 
-            elif "class_to_idx" in loaded and isinstance(
-                loaded["class_to_idx"], dict
+            elif (
+                "class_to_idx" in loaded
+                and isinstance(
+                    loaded["class_to_idx"],
+                    dict,
+                )
             ):
                 SKIN_TYPES = sorted(
                     loaded["class_to_idx"].keys(),
-                    key=lambda k: loaded["class_to_idx"][k],
+                    key=lambda k:
+                        loaded["class_to_idx"][k],
                 )
 
             state_dict = loaded.get(
                 "model_state_dict",
-                loaded.get("state_dict", loaded),
+                loaded.get(
+                    "state_dict",
+                    loaded,
+                ),
             )
 
         else:
+
             state_dict = loaded
 
-        # IMPORTANT:
-        # Your Nypiel V2 checkpoint may NOT be a ResNet18.
-        # Therefore we first try ResNet18 only for compatibility.
+        # ----------------------------------------------------
+        # ResNet18 compatibility
+        # ----------------------------------------------------
+
         from torchvision.models import resnet18
 
         net = resnet18(
@@ -151,48 +277,84 @@ def _load_skin_type_model():
             num_classes=len(SKIN_TYPES),
         )
 
-        net.load_state_dict(state_dict, strict=True)
+        net.load_state_dict(
+            state_dict,
+            strict=True,
+        )
 
-        _skin_type_model = net.to("cpu").eval()
+        _skin_type_model = (
+            net
+            .to("cpu")
+            .eval()
+        )
 
         print(
-            f"[nypiel] Loaded skin-type ResNet18 "
-            f"with classes: {SKIN_TYPES}"
+            "[nypiel] Loaded skin-type "
+            "ResNet18 model."
         )
 
         return True
 
     except Exception as exc:
+
         print(
-            f"[nypiel] Skin-type model could not be loaded: {exc}"
+            f"[nypiel] Skin-type model loading failed: "
+            f"{exc}"
         )
+
         _skin_type_model = None
+
         return False
 
 
+# ============================================================
+# LOAD CONCERN MODEL
+# ============================================================
+
 def _load_concern_model():
+
     global _concern_model
 
+    # ML disabled
+    if not ENABLE_ML:
+        return False
+
+    # Already loaded
     if _concern_model is not None:
         return True
 
+    # Model doesn't exist
     if not os.path.exists(CONCERN_WEIGHTS):
-        print("[nypiel] Concern weights not found.")
+
+        print(
+            "[nypiel] Concern weights not found. "
+            "Using fallback."
+        )
+
         return False
 
     try:
+
+        print(
+            "[nypiel] Loading YOLO concern model..."
+        )
+
         from ultralytics import YOLO
 
-        print("[nypiel] Loading YOLO concern model...")
-
-        _concern_model = YOLO(CONCERN_WEIGHTS)
+        _concern_model = YOLO(
+            CONCERN_WEIGHTS
+        )
 
         print(
             f"[nypiel] YOLO concern model loaded: "
             f"{CONCERN_WEIGHTS}"
         )
 
-        if hasattr(_concern_model, "names"):
+        if hasattr(
+            _concern_model,
+            "names",
+        ):
+
             print(
                 f"[nypiel] Concern classes: "
                 f"{_concern_model.names}"
@@ -201,32 +363,60 @@ def _load_concern_model():
         return True
 
     except Exception as exc:
+
         print(
-            f"[nypiel] Could not load YOLO model: {exc}"
+            f"[nypiel] YOLO model loading failed: "
+            f"{exc}"
         )
+
         _concern_model = None
+
         return False
 
 
-def predict_skin_type(image_bytes: bytes) -> Dict[str, Any]:
+# ============================================================
+# SKIN TYPE PREDICTION
+# ============================================================
+
+def predict_skin_type(
+    image_bytes: bytes,
+) -> Dict[str, Any]:
+
+    # --------------------------------------------------------
+    # Validate image
+    # --------------------------------------------------------
 
     img = Image.open(
         io.BytesIO(image_bytes)
     ).convert("RGB")
 
-    # Try real model
+    # --------------------------------------------------------
+    # Try real ML model only if enabled
+    # --------------------------------------------------------
+
     if _load_skin_type_model():
 
         try:
+
             import torch
             from torchvision import transforms
 
             tfm = transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize(
+                    (224, 224)
+                ),
                 transforms.ToTensor(),
                 transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
+                    mean=[
+                        0.485,
+                        0.456,
+                        0.406,
+                    ],
+                    std=[
+                        0.229,
+                        0.224,
+                        0.225,
+                    ],
                 ),
             ])
 
@@ -234,7 +424,9 @@ def predict_skin_type(image_bytes: bytes) -> Dict[str, Any]:
 
             with torch.no_grad():
 
-                logits = _skin_type_model(tensor)
+                logits = _skin_type_model(
+                    tensor
+                )
 
                 probs = torch.softmax(
                     logits,
@@ -242,7 +434,9 @@ def predict_skin_type(image_bytes: bytes) -> Dict[str, Any]:
                 )[0]
 
                 idx = int(
-                    torch.argmax(probs).item()
+                    torch.argmax(
+                        probs
+                    ).item()
                 )
 
             return {
@@ -254,31 +448,52 @@ def predict_skin_type(image_bytes: bytes) -> Dict[str, Any]:
             }
 
         except Exception as exc:
+
             print(
-                f"[nypiel] Skin-type inference failed: {exc}"
+                f"[nypiel] Skin-type inference "
+                f"failed: {exc}"
             )
 
-    # Temporary fallback
-    label = random.choice(SKIN_TYPES)
+    # --------------------------------------------------------
+    # Lightweight fallback
+    # --------------------------------------------------------
+
+    label = random.choice(
+        SKIN_TYPES
+    )
 
     return {
         "label": label,
         "confidence": round(
-            random.uniform(0.78, 0.97),
+            random.uniform(
+                0.78,
+                0.97,
+            ),
             2,
         ),
     }
 
 
+# ============================================================
+# SKIN CONCERN PREDICTION
+# ============================================================
+
 def predict_skin_concerns(
     image_bytes: bytes,
 ) -> List[Dict[str, Any]]:
+
+    # --------------------------------------------------------
+    # Validate image
+    # --------------------------------------------------------
 
     img = Image.open(
         io.BytesIO(image_bytes)
     ).convert("RGB")
 
-    # Load YOLO only when actually needed
+    # --------------------------------------------------------
+    # Try real YOLO model only if enabled
+    # --------------------------------------------------------
+
     if _load_concern_model():
 
         try:
@@ -298,13 +513,25 @@ def predict_skin_concerns(
 
             for box in results.boxes:
 
-                cls_idx = int(box.cls[0])
-                conf = float(box.conf[0])
+                cls_idx = int(
+                    box.cls[0]
+                )
 
-                if isinstance(names, dict):
-                    raw_name = names[cls_idx]
+                conf = float(
+                    box.conf[0]
+                )
+
+                if isinstance(
+                    names,
+                    dict,
+                ):
+                    raw_name = names[
+                        cls_idx
+                    ]
                 else:
-                    raw_name = names[cls_idx]
+                    raw_name = names[
+                        cls_idx
+                    ]
 
                 label = normalize_concern_label(
                     str(raw_name)
@@ -317,28 +544,17 @@ def predict_skin_concerns(
 
                 output.append({
                     "label": label,
-                    "confidence": round(conf, 2),
+                    "confidence": round(
+                        conf,
+                        2,
+                    ),
                     "box": [
-                        round(
-                            max(
-                                0.0,
-                                min(1.0, x1 / img_w),
-                            ),
-                            3,
-                        ),
-                        round(
-                            max(
-                                0.0,
-                                min(1.0, y1 / img_h),
-                            ),
-                            3,
-                        ),
                         round(
                             max(
                                 0.0,
                                 min(
                                     1.0,
-                                    (x2 - x1) / img_w,
+                                    x1 / img_w,
                                 ),
                             ),
                             3,
@@ -348,7 +564,29 @@ def predict_skin_concerns(
                                 0.0,
                                 min(
                                     1.0,
-                                    (y2 - y1) / img_h,
+                                    y1 / img_h,
+                                ),
+                            ),
+                            3,
+                        ),
+                        round(
+                            max(
+                                0.0,
+                                min(
+                                    1.0,
+                                    (x2 - x1)
+                                    / img_w,
+                                ),
+                            ),
+                            3,
+                        ),
+                        round(
+                            max(
+                                0.0,
+                                min(
+                                    1.0,
+                                    (y2 - y1)
+                                    / img_h,
                                 ),
                             ),
                             3,
@@ -361,13 +599,20 @@ def predict_skin_concerns(
         except Exception as exc:
 
             print(
-                f"[nypiel] YOLO inference failed: {exc}"
+                f"[nypiel] YOLO inference "
+                f"failed: {exc}"
             )
 
-    # Temporary fallback
+    # --------------------------------------------------------
+    # Lightweight fallback
+    # --------------------------------------------------------
+
     picks = random.sample(
         CONCERN_CLASSES,
-        k=random.randint(2, 4),
+        k=random.randint(
+            2,
+            4,
+        ),
     )
 
     output = []
@@ -377,14 +622,41 @@ def predict_skin_concerns(
         output.append({
             "label": label,
             "confidence": round(
-                random.uniform(0.60, 0.95),
+                random.uniform(
+                    0.60,
+                    0.95,
+                ),
                 2,
             ),
             "box": [
-                round(random.uniform(0.1, 0.6), 2),
-                round(random.uniform(0.1, 0.6), 2),
-                round(random.uniform(0.15, 0.3), 2),
-                round(random.uniform(0.15, 0.3), 2),
+                round(
+                    random.uniform(
+                        0.1,
+                        0.6,
+                    ),
+                    2,
+                ),
+                round(
+                    random.uniform(
+                        0.1,
+                        0.6,
+                    ),
+                    2,
+                ),
+                round(
+                    random.uniform(
+                        0.15,
+                        0.3,
+                    ),
+                    2,
+                ),
+                round(
+                    random.uniform(
+                        0.15,
+                        0.3,
+                    ),
+                    2,
+                ),
             ],
         })
 

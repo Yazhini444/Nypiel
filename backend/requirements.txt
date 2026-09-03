@@ -10,12 +10,6 @@ pillow==10.4.0
 numpy==1.26.4
 psycopg2-binary==2.9.9
 
-# --- ML stack for the two trained models ---
-torch>=2.4.1,<2.5.0
-torchvision>=0.19.1,<0.20.0
-ultralytics>=8.1.0
-
 # --- LLM Chatbot Integration ---
 google-genai>=2.0.0
 python-dotenv>=1.0.0
-psycopg2-binary==2.9.9
