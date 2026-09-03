@@ -26,6 +26,7 @@ security = HTTPBearer()
 # Hash password
 def hash_password(password: str) -> str:
     pw = password.encode("utf-8")[:72]
+
     return bcrypt.hashpw(
         pw,
         bcrypt.gensalt()
@@ -77,6 +78,7 @@ def get_current_user(
         },
     )
 
+    # Verify JWT token
     try:
         payload = jwt.decode(
             token,
@@ -84,21 +86,36 @@ def get_current_user(
             algorithms=[ALGORITHM]
         )
 
-        user_id: str = payload.get("sub")
+        user_id = payload.get("sub")
+
+        print(f"[AUTH] JWT decoded successfully. sub={user_id}")
 
         if user_id is None:
+            print("[AUTH] JWT has no sub field")
             raise credentials_exception
 
-    except JWTError:
+    except JWTError as e:
+        print(f"[AUTH] JWT decode FAILED: {e}")
         raise credentials_exception
 
-    user = (
-        db.query(models.User)
-        .filter(models.User.id == int(user_id))
-        .first()
-    )
+    # Find user in database
+    try:
+        user = (
+            db.query(models.User)
+            .filter(models.User.id == int(user_id))
+            .first()
+        )
+    except Exception as e:
+        print(f"[AUTH] Database lookup FAILED: {e}")
+        raise credentials_exception
 
     if user is None:
+        print(f"[AUTH] USER NOT FOUND: id={user_id}")
         raise credentials_exception
+
+    print(
+        f"[AUTH] User authenticated: "
+        f"id={user.id}, email={user.email}"
+    )
 
     return user
