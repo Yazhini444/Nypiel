@@ -30,7 +30,7 @@ app.include_router(chat_router.router)
 
 @app.on_event("startup")
 def startup():
-    inference.load_models()
+    print("[nypiel] Server started. Models will load on first request.")
 
 
 @app.get("/")
