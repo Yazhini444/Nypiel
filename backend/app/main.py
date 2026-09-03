@@ -15,7 +15,11 @@ app = FastAPI(title="nypiel API", description="Skin type & concern analysis API 
 app.add_middleware(
     CORSMiddleware,
     # Lock this down to your real frontend origin(s) before going live.
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://nypiel-frontend.onrender.com",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
