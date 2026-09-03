@@ -1,4 +1,4 @@
-const BASE = 'https://nypiel.onrender.com/api'
+const BASE = 'https://nypiel.onrender.com'
 
 function authHeaders() {
   const token = localStorage.getItem('nypiel_token')
