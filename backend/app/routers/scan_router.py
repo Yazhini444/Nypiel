@@ -1,17 +1,25 @@
 import os
 import uuid
 from typing import List
+
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, auth, inference, recommendations
 from ..database import get_db
 
+
 router = APIRouter(prefix="/scan", tags=["scan"])
+
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+ALLOWED_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+}
 
 
 @router.post("/analyze", response_model=schemas.ScanResultOut)
@@ -21,26 +29,55 @@ async def analyze(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    # Check file type
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail="Please upload a JPEG, PNG, or WEBP image.")
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload a JPEG, PNG, or WEBP image."
+        )
 
+    # Read uploaded image
     image_bytes = await file.read()
+
     if not image_bytes:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty."
+        )
 
-    # --- Model 1: skin type ---
+    # --------------------------------------------------
+    # Model 1: Predict skin type
+    # --------------------------------------------------
     skin_type_result = inference.predict_skin_type(image_bytes)
-    # --- Model 2: skin concerns (multi-label) ---
-    concerns = inference.predict_skin_concerns(image_bytes)
-    # --- Recommendation engine, built from both model outputs ---
-    recs = recommendations.build_recommendations(skin_type_result["label"], concerns)
 
+    # --------------------------------------------------
+    # Model 2: Predict skin concerns
+    # --------------------------------------------------
+    concerns = inference.predict_skin_concerns(image_bytes)
+
+    # --------------------------------------------------
+    # Recommendation engine
+    # --------------------------------------------------
+    recs = recommendations.build_recommendations(
+        skin_type_result["label"],
+        concerns
+    )
+
+    # --------------------------------------------------
+    # Save uploaded image
+    # --------------------------------------------------
     ext = os.path.splitext(file.filename or "")[1] or ".jpg"
+
     filename = f"{uuid.uuid4().hex}{ext}"
+
     path = os.path.join(UPLOAD_DIR, filename)
+
     with open(path, "wb") as f:
         f.write(image_bytes)
 
+    # --------------------------------------------------
+    # Create scan result
+    # --------------------------------------------------
     result = models.ScanResult(
         owner_id=current_user.id,
         image_path=f"/uploads/{filename}",
@@ -50,12 +87,17 @@ async def analyze(
         recommendations=recs,
     )
 
+    # --------------------------------------------------
+    # Save to database
+    # --------------------------------------------------
     if save:
         db.add(result)
         db.commit()
         db.refresh(result)
+
     else:
-        # Preview mode: run inference but don't persist. Give it a transient id.
+        # Preview mode:
+        # Run inference but don't save to database
         result.id = 0
         result.created_at = __import__("datetime").datetime.utcnow()
 
@@ -69,8 +111,12 @@ def history(
 ):
     return (
         db.query(models.ScanResult)
-        .filter(models.ScanResult.owner_id == current_user.id)
-        .order_by(models.ScanResult.created_at.desc())
+        .filter(
+            models.ScanResult.owner_id == current_user.id
+        )
+        .order_by(
+            models.ScanResult.created_at.desc()
+        )
         .all()
     )
 
@@ -83,11 +129,19 @@ def get_scan(
 ):
     scan = (
         db.query(models.ScanResult)
-        .filter(models.ScanResult.id == scan_id, models.ScanResult.owner_id == current_user.id)
+        .filter(
+            models.ScanResult.id == scan_id,
+            models.ScanResult.owner_id == current_user.id
+        )
         .first()
     )
+
     if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Scan not found."
+        )
+
     return scan
 
 
@@ -99,11 +153,20 @@ def delete_scan(
 ):
     scan = (
         db.query(models.ScanResult)
-        .filter(models.ScanResult.id == scan_id, models.ScanResult.owner_id == current_user.id)
+        .filter(
+            models.ScanResult.id == scan_id,
+            models.ScanResult.owner_id == current_user.id
+        )
         .first()
     )
+
     if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found.")
+        raise HTTPException(
+            status_code=404,
+            detail="Scan not found."
+        )
+
     db.delete(scan)
     db.commit()
+
     return {"ok": True}
