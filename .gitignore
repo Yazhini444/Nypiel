@@ -1,0 +1,19 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+.streamlit/secrets.toml
+*.db
+backend/uploads/
+uploads/
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+tmp/
+temp/
+
+# Keep backend/weights/*.pth and backend/weights/*.pt tracked when deployed.
