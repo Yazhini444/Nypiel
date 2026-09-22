@@ -438,7 +438,7 @@ if st.session_state.get(
 # ---------------------------------------------------------
 # GEMINI CHATBOT
 # ---------------------------------------------------------
-GEMINI_MODEL = "gemini-2.5-flash-lite"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_MISSING_KEY_MESSAGE = (
     "Gemini API key is not configured. Please add GEMINI_API_KEY to your "
     "environment or Streamlit Secrets."
@@ -467,6 +467,23 @@ def get_gemini_api_key():
     except Exception:
         secret_key = None
     return secret_key or os.getenv("GEMINI_API_KEY")
+
+
+def format_gemini_error(exc):
+    """Format SDK/API diagnostics without exposing the configured key."""
+    api_key = get_gemini_api_key()
+    safe_message = str(exc)
+    if api_key:
+        safe_message = safe_message.replace(api_key, "[REDACTED]")
+
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(exc, "code", None)
+    status_text = f"; status={status}" if status is not None else ""
+    return (
+        f"Gemini API error: {type(exc).__name__}{status_text}: "
+        f"{safe_message} (model: {GEMINI_MODEL})"
+    )
 
 
 @st.cache_resource
@@ -550,7 +567,8 @@ if question:
         try:
             client = get_gemini_client(api_key)
             reply = generate_gemini_reply(client, st.session_state["chat_history"])
-        except Exception:
+        except Exception as exc:
+            st.error(format_gemini_error(exc))
             reply = GEMINI_ERROR_MESSAGE
 
     st.session_state["chat_history"].append({"role": "model", "content": reply})
