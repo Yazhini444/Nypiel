@@ -1,19 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import ArchMark from '../components/ArchMark'
+import { getStreamlitBridgeError } from '../lib/streamlitBridge'
 
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(getStreamlitBridgeError)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const showBridgeError = () => setError(getStreamlitBridgeError())
+    window.addEventListener('nypiel-bridge-error', showBridgeError)
+    return () => window.removeEventListener('nypiel-bridge-error', showBridgeError)
+  }, [])
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    localStorage.removeItem('nypiel_streamlit_error')
     setBusy(true)
     try {
       await login(email, password)

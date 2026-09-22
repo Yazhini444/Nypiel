@@ -35,7 +35,7 @@ export default function Navbar() {
             <>
               <span className="hidden sm:block text-sm text-clay">{user.name || user.email}</span>
               <button
-                onClick={() => { logout(); navigate('/') }}
+                onClick={async () => { await logout(); navigate('/') }}
                 className="text-sm border border-walnut/30 rounded-full px-4 py-1.5 text-walnut hover:bg-walnut hover:text-cream transition-colors"
               >
                 Log out

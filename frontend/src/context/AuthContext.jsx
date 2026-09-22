@@ -56,10 +56,14 @@ export function AuthProvider({ children, skipInitialCheck = false }) {
     persist(data.access_token, data.user)
   }
 
-  function logout() {
-    localStorage.removeItem('nypiel_token')
-    localStorage.removeItem('nypiel_streamlit_user')
-    setUser(null)
+  async function logout() {
+    try {
+      await api.logout()
+    } finally {
+      localStorage.removeItem('nypiel_token')
+      localStorage.removeItem('nypiel_streamlit_user')
+      setUser(null)
+    }
   }
 
   return (

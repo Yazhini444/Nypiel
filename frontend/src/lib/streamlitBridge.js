@@ -26,6 +26,12 @@ export function createStreamlitBridge() {
 
     const response = event.detail?.args?.bridgeResponse
     if (!response) return
+    if (response.ok) {
+      localStorage.removeItem('nypiel_streamlit_error')
+    } else if (response.error) {
+      localStorage.setItem('nypiel_streamlit_error', response.error)
+      window.dispatchEvent(new CustomEvent('nypiel-bridge-error'))
+    }
     const request = pending.get(response.requestId)
     if (!request) return
     pending.delete(response.requestId)
@@ -41,4 +47,8 @@ export function createStreamlitBridge() {
 export function cleanupStreamlitBridge() {
   pending.forEach(({ reject }) => reject(new Error('Nypiel component closed.')))
   pending.clear()
+}
+
+export function getStreamlitBridgeError() {
+  return localStorage.getItem('nypiel_streamlit_error') || ''
 }

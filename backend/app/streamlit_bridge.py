@@ -173,6 +173,7 @@ def handle_bridge_request(request: Dict[str, Any]) -> Any:
     handlers = {
         "signup": _signup,
         "login": _login,
+        "logout": _logout,
         "me": lambda _: _public_user(_require_user()),
         "analyze": _analyze,
         "history": lambda _: list(st.session_state.get("nypiel_bridge_scans", [])),
@@ -194,5 +195,11 @@ def _delete_scan(scan_id: Any) -> Dict[str, bool]:
 
 def _reset(_: Dict[str, Any]) -> Dict[str, bool]:
     for key in ("nypiel_bridge_analysis", "nypiel_bridge_scans", "nypiel_bridge_chat", "nypiel_bridge_user"):
+        st.session_state.pop(key, None)
+    return {"ok": True}
+
+
+def _logout(_: Dict[str, Any]) -> Dict[str, bool]:
+    for key in ("nypiel_bridge_user", "nypiel_bridge_analysis", "nypiel_bridge_chat"):
         st.session_state.pop(key, None)
     return {"ok": True}

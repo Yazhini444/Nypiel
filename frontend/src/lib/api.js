@@ -48,6 +48,10 @@ export const api = {
     ? streamlitBridge('me', {})
     : fetch(`${BASE}/auth/me`, { headers: authHeaders() }).then(handle),
 
+  logout: () => streamlitBridge
+    ? streamlitBridge('logout', {})
+    : Promise.resolve({ ok: true }),
+
   analyze: (file, save = true) => {
     if (streamlitBridge) {
       return fileToDataUrl(file).then((image) =>

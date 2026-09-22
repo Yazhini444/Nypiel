@@ -9,6 +9,14 @@ import { createStreamlitBridge } from './lib/streamlitBridge.js'
 import './index.css'
 import './streamlit.css'
 
+const savedRoute = localStorage.getItem('nypiel_streamlit_route')
+if (savedRoute && window.location.hash !== savedRoute) {
+  window.location.hash = savedRoute
+}
+window.addEventListener('hashchange', () => {
+  localStorage.setItem('nypiel_streamlit_route', window.location.hash || '#/')
+})
+
 configureStreamlitBridge(createStreamlitBridge())
 
 function StreamlitApp() {
