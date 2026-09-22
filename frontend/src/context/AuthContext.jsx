@@ -3,11 +3,31 @@ import { api } from '../lib/api'
 
 const AuthContext = createContext(null)
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+export function AuthProvider({ children, skipInitialCheck = false }) {
+  const [user, setUser] = useState(() => {
+    if (!skipInitialCheck) return null
+    try {
+      return JSON.parse(localStorage.getItem('nypiel_streamlit_user') || 'null')
+    } catch {
+      return null
+    }
+  })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (skipInitialCheck) {
+      const syncStreamlitUser = () => {
+        try {
+          setUser(JSON.parse(localStorage.getItem('nypiel_streamlit_user') || 'null'))
+        } catch {
+          setUser(null)
+        }
+      }
+      window.addEventListener('nypiel-auth-updated', syncStreamlitUser)
+      syncStreamlitUser()
+      setLoading(false)
+      return () => window.removeEventListener('nypiel-auth-updated', syncStreamlitUser)
+    }
     const token = localStorage.getItem('nypiel_token')
     if (!token) {
       setLoading(false)
@@ -22,6 +42,7 @@ export function AuthProvider({ children }) {
 
   function persist(token, user) {
     localStorage.setItem('nypiel_token', token)
+    localStorage.setItem('nypiel_streamlit_user', JSON.stringify(user))
     setUser(user)
   }
 
@@ -37,6 +58,7 @@ export function AuthProvider({ children }) {
 
   function logout() {
     localStorage.removeItem('nypiel_token')
+    localStorage.removeItem('nypiel_streamlit_user')
     setUser(null)
   }
 

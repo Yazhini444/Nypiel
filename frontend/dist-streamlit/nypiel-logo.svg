@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 380" fill="none">
+  <!-- Background (optional transparent or cream) -->
+  <rect width="320" height="380" fill="#F4EFEA" rx="20"/>
+
+  <!-- Brand Arch Outline -->
+  <path
+    d="M85 240 V 120 C 85 75 118 45 160 45 C 202 45 235 75 235 120 V 240 Z"
+    stroke="#745E49"
+    stroke-width="1.8"
+    stroke-linejoin="round"
+    fill="none"
+  />
+
+  <!-- Botanical Central Stem -->
+  <!-- Stem extending through the baseline down to y=275 -->
+  <line x1="160" y1="85" x2="160" y2="275" stroke="#745E49" stroke-width="1.6" stroke-linecap="round" />
+
+  <!-- Intersection 4-point diamond node at baseline -->
+  <path
+    d="M 160 236 L 162.8 240 L 160 244 L 157.2 240 Z"
+    fill="#745E49"
+  />
+
+  <!-- Botanical Branch Leaves (Delicate olive/eucalyptus botanical detailing) -->
+  <!-- Lower Left Branch (y ~ 180 to 200) -->
+  <path d="M160 205 Q 148 198 138 188" stroke="#745E49" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  <!-- Leaves on Lower Left -->
+  <path d="M138 188 C 134 182 136 176 144 180 C 146 186 142 190 138 188 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M148 198 C 142 195 142 189 150 192 C 153 196 150 200 148 198 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M142 182 C 146 174 153 177 151 184 C 148 188 143 186 142 182 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+
+  <!-- Mid Left Leaf (y ~ 165) -->
+  <path d="M160 170 Q 148 160 142 148" stroke="#745E49" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M142 148 C 140 140 148 140 150 148 C 150 154 144 156 142 148 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M152 160 C 146 154 151 148 156 152 C 158 158 154 162 152 160 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+
+  <!-- Lower Right Branch (y ~ 160 to 180) -->
+  <path d="M160 178 Q 172 168 182 154" stroke="#745E49" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M182 154 C 188 150 190 156 184 160 C 178 163 176 157 182 154 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M172 168 C 178 162 182 166 177 172 C 172 175 169 171 172 168 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M175 158 C 182 152 186 157 180 163 C 176 165 173 162 175 158 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+
+  <!-- Upper Left Branch & Leaves (y ~ 135) -->
+  <path d="M160 140 Q 152 130 150 120" stroke="#745E49" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M150 120 C 147 112 154 112 156 120 C 156 125 151 127 150 120 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M156 132 C 150 126 155 120 160 124 C 161 129 158 134 156 132 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+
+  <!-- Upper Right Branch & Leaves (y ~ 125) -->
+  <path d="M160 130 Q 170 118 178 108" stroke="#745E49" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <path d="M178 108 C 183 102 186 108 181 113 C 176 116 174 111 178 108 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M168 122 C 175 116 178 121 173 126 C 168 129 166 125 168 122 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M173 113 C 180 108 183 113 178 118 C 174 120 171 117 173 113 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+
+  <!-- Topmost Apex Foliage (y ~ 85 to 105) -->
+  <path d="M160 105 Q 163 94 165 85" stroke="#745E49" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+  <path d="M165 85 C 166 78 171 80 168 87 C 166 91 163 90 165 85 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M158 92 C 154 86 160 84 162 90 C 163 94 159 95 158 92 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+  <path d="M163 98 C 168 93 172 96 168 102 C 165 104 162 101 163 98 Z" fill="#8C7761" stroke="#745E49" stroke-width="0.8"/>
+
+  <!-- Brand Wordmark: "nypiel" -->
+  <text
+    x="160"
+    y="320"
+    text-anchor="middle"
+    font-family="'Fraunces', 'Cormorant Garamond', 'Playfair Display', serif"
+    font-size="40"
+    font-weight="400"
+    letter-spacing="-0.02em"
+    fill="#523E2B"
+  >nypiel</text>
+
+  <!-- Tagline: "PREMIUM SKINCARE" -->
+  <text
+    x="160"
+    y="348"
+    text-anchor="middle"
+    font-family="'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="9.5"
+    font-weight="500"
+    letter-spacing="0.28em"
+    fill="#745E49"
+  >PREMIUM SKINCARE</text>
+</svg>

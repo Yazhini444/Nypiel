@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -24,6 +25,7 @@ from backend.app.inference import (
     validate_model_files,
 )
 from backend.app.recommendations import build_recommendations
+from backend.app.streamlit_bridge import BridgeError, handle_bridge_request
 
 
 # ---------------------------------------------------------
@@ -60,6 +62,56 @@ else:
         cached_models()
     except Exception as exc:
         model_error = f"Trained models could not be loaded on CPU: {exc}"
+
+
+REACT_COMPONENT_DIR = ROOT_DIR / "frontend" / "dist-streamlit"
+if REACT_COMPONENT_DIR.exists() and (REACT_COMPONENT_DIR / "index.html").exists():
+    nypiel_react = components.declare_component(
+        "nypiel_react",
+        path=str(REACT_COMPONENT_DIR),
+    )
+    bridge_request = nypiel_react(
+        bridgeResponse=st.session_state.get("nypiel_bridge_response"),
+        currentUser=(
+            {
+                "id": st.session_state["nypiel_bridge_user"]["id"],
+                "email": st.session_state["nypiel_bridge_user"]["email"],
+                "name": st.session_state["nypiel_bridge_user"].get("name"),
+            }
+            if st.session_state.get("nypiel_bridge_user")
+            else None
+        ),
+        key="nypiel-react-ui",
+    )
+    if bridge_request:
+        request_id = bridge_request.get("requestId")
+        if request_id == st.session_state.get("nypiel_last_bridge_request"):
+            bridge_request = None
+        else:
+            st.session_state["nypiel_last_bridge_request"] = request_id
+    if bridge_request:
+        try:
+            bridge_data = handle_bridge_request(bridge_request)
+            st.session_state["nypiel_bridge_response"] = {
+                "requestId": request_id,
+                "ok": True,
+                "data": bridge_data,
+            }
+        except BridgeError as exc:
+            st.session_state["nypiel_bridge_response"] = {
+                "requestId": request_id,
+                "ok": False,
+                "error": str(exc),
+            }
+        except Exception:
+            logging.exception("Nypiel component request failed")
+            st.session_state["nypiel_bridge_response"] = {
+                "requestId": request_id,
+                "ok": False,
+                "error": "Nypiel could not complete that request.",
+            }
+        st.rerun()
+    st.stop()
 
 
 # ---------------------------------------------------------

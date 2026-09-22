@@ -8,6 +8,7 @@ import Scan from './pages/Scan'
 import Results from './pages/Results'
 import History from './pages/History'
 import Chat from './pages/Chat'
+import Guide from './pages/Guide'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/results/:id" element={<ProtectedRoute><Results /></ProtectedRoute>} />
           <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+          <Route path="/guide" element={<Guide />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

@@ -25,6 +25,7 @@ export default function Navbar() {
               <NavLink to="/scan" className={linkClass}>Scan</NavLink>
               <NavLink to="/history" className={linkClass}>My results</NavLink>
               <NavLink to="/chat" className={linkClass}>Ask nypiel</NavLink>
+              <NavLink to="/guide" className={linkClass}>Guide</NavLink>
             </>
           )}
         </nav>
