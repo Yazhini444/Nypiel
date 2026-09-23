@@ -9,11 +9,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/signup", response_model=schemas.Token)
 def signup(payload: schemas.UserCreate, db: Session = Depends(get_db)):
-    if db.query(models.User).filter(models.User.email == payload.email).first():
+    email = payload.email.strip().lower()
+    if db.query(models.User).filter(func.lower(models.User.email) == email).first():
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
     user = models.User(
-        email=payload.email,
+        email=email,
         name=payload.name,
         hashed_password=auth.hash_password(payload.password),
     )
@@ -27,7 +28,8 @@ def signup(payload: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=schemas.Token)
 def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    email = payload.email.strip().lower()
+    user = db.query(models.User).filter(func.lower(models.User.email) == email).first()
     if not user or not auth.verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password.")
 

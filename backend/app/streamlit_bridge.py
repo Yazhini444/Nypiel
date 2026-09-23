@@ -103,11 +103,72 @@ def _stored_user(user: models.User) -> Dict[str, Any]:
     }
 
 
+def get_auth_diagnostics(email: str = None) -> Dict[str, Any]:
+    """Report database and user status without exposing any sensitive credentials."""
+    from sqlalchemy import inspect
+    db_url = str(engine.url)
+    users_table_exists = False
+    user_count = 0
+    user_found = False
+    normalized_email = email.strip().lower() if email else None
+
+    try:
+        inspector = inspect(engine)
+        users_table_exists = "users" in inspector.get_table_names()
+        if users_table_exists:
+            db = SessionLocal()
+            try:
+                user_count = db.query(models.User).count()
+                if normalized_email:
+                    match = db.query(models.User).filter(func.lower(models.User.email) == normalized_email).first()
+                    user_found = bool(match)
+            finally:
+                db.close()
+    except Exception as exc:
+        LOGGER.error("Auth diagnostics check failed: %s", exc)
+
+    diag = {
+        "database_path": db_url,
+        "users_table_exists": users_table_exists,
+        "user_count": user_count,
+        "searched_email": normalized_email,
+        "user_found": user_found,
+    }
+    LOGGER.info("Auth diagnostics: %s", diag)
+    return diag
+
+
 def _find_user(email: str) -> Dict[str, Any] | None:
     db = SessionLocal()
     try:
-        user = db.query(models.User).filter(func.lower(models.User.email) == email).first()
+        norm_email = email.strip().lower()
+        user = db.query(models.User).filter(func.lower(models.User.email) == norm_email).first()
         return _stored_user(user) if user else None
+    finally:
+        db.close()
+
+
+def _get_user_count() -> int:
+    db = SessionLocal()
+    try:
+        return db.query(models.User).count()
+    except Exception:
+        return 0
+    finally:
+        db.close()
+
+
+def _upgrade_user_password(user_id: int, password: str) -> None:
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if user:
+            user.hashed_password = hash_password(password)
+            db.commit()
+            LOGGER.info("Upgraded legacy password hash to bcrypt for user_id=%s", user_id)
+    except Exception as exc:
+        db.rollback()
+        LOGGER.error("Failed to upgrade legacy password hash: %s", exc)
     finally:
         db.close()
 
@@ -115,14 +176,27 @@ def _find_user(email: str) -> Dict[str, Any] | None:
 def _signup(payload: Dict[str, Any]) -> Dict[str, Any]:
     email = _normalize_email(payload.get("email"))
     password = str(payload.get("password", ""))
+    db_path = str(engine.url)
+
     if len(password) < 8:
+        print(f"AUTH DB PATH: {db_path}")
+        print("AUTH USERS TABLE EXISTS: True")
+        print(f"AUTH USER COUNT: {_get_user_count()}")
+        print(f"AUTH SIGNUP EMAIL: {email}")
+        print("AUTH SIGNUP STATUS: FAILED_PASSWORD_TOO_SHORT")
+        LOGGER.warning("Streamlit auth action=signup status=failed_password_too_short db=%s", db_path)
         raise BridgeError("Enter a valid email and a password of at least 8 characters.")
 
     db = SessionLocal()
     try:
         existing = db.query(models.User).filter(func.lower(models.User.email) == email).first()
         if existing:
-            LOGGER.info("Streamlit auth action=signup matching_user=true (email already exists)")
+            print(f"AUTH DB PATH: {db_path}")
+            print("AUTH USERS TABLE EXISTS: True")
+            print(f"AUTH USER COUNT: {_get_user_count()}")
+            print(f"AUTH SIGNUP EMAIL: {email}")
+            print("AUTH SIGNUP STATUS: EMAIL_ALREADY_EXISTS")
+            LOGGER.info("Streamlit auth action=signup status=email_already_registered matching_user=true db=%s", db_path)
             raise BridgeError("An account with this email already exists.")
 
         user = models.User(
@@ -134,33 +208,72 @@ def _signup(payload: Dict[str, Any]) -> Dict[str, Any]:
         db.commit()
         db.refresh(user)
         public_user = {"id": user.id, "email": user.email, "name": user.name}
+
+        user_count = db.query(models.User).count()
+        print(f"AUTH DB PATH: {db_path}")
+        print("AUTH USERS TABLE EXISTS: True")
+        print(f"AUTH USER COUNT: {user_count}")
+        print(f"AUTH SIGNUP EMAIL: {email}")
+        print("AUTH SIGNUP STATUS: SUCCESS")
+        LOGGER.info("Streamlit auth action=signup status=SUCCESS user_id=%s matching_user=false db=%s", user.id, db_path)
     except BridgeError:
         db.rollback()
         raise
     except IntegrityError as exc:
         db.rollback()
-        LOGGER.info("Streamlit auth action=signup matching_user=true (integrity error)")
+        LOGGER.info("Streamlit auth action=signup status=integrity_error db=%s", db_path)
         raise BridgeError("An account with this email already exists.") from exc
     finally:
         db.close()
 
     st.session_state["nypiel_bridge_user"] = public_user
-    LOGGER.info("Streamlit auth action=signup matching_user=false (account created)")
     return {"access_token": f"streamlit-session-{public_user['id']}", "token_type": "bearer", "user": public_user}
 
 
 def _login(payload: Dict[str, Any]) -> Dict[str, Any]:
+    db_path = str(engine.url)
+    email_raw = payload.get("email")
+
     try:
-        email = _normalize_email(payload.get("email"))
+        email = _normalize_email(email_raw)
     except BridgeError:
-        LOGGER.info("Streamlit auth action=login matching_user=false (invalid email format)")
+        email_clean = str(email_raw or "").strip().lower()
+        print(f"AUTH DB PATH: {db_path}")
+        print("AUTH USERS TABLE EXISTS: True")
+        print(f"AUTH USER COUNT: {_get_user_count()}")
+        print(f"AUTH LOGIN EMAIL: {email_clean}")
+        print("AUTH USER FOUND: False")
+        print("AUTH PASSWORD VERIFIED: False")
+        LOGGER.info("Streamlit auth action=login status=failed_invalid_email_format db=%s matching_user=false", db_path)
         raise BridgeError("Incorrect email or password.")
 
     user = _find_user(email)
-    LOGGER.info("Streamlit auth action=login matching_user=%s", bool(user))
-    if not user or not verify_password(str(payload.get("password", "")), user["password_hash"]):
+    user_found = bool(user)
+    password = str(payload.get("password", ""))
+    password_verified = False
+
+    if user:
+        password_verified = verify_password(password, user["password_hash"])
+        if password_verified and not user["password_hash"].startswith(("$2a$", "$2b$", "$2y$")):
+            _upgrade_user_password(user["id"], password)
+
+    user_count = _get_user_count()
+    print(f"AUTH DB PATH: {db_path}")
+    print("AUTH USERS TABLE EXISTS: True")
+    print(f"AUTH USER COUNT: {user_count}")
+    print(f"AUTH LOGIN EMAIL: {email}")
+    print(f"AUTH USER FOUND: {user_found}")
+    print(f"AUTH PASSWORD VERIFIED: {password_verified}")
+
+    if not user:
+        LOGGER.info("Streamlit auth action=login status=USER_NOT_FOUND db=%s matching_user=false", db_path)
         raise BridgeError("Incorrect email or password.")
 
+    if not password_verified:
+        LOGGER.info("Streamlit auth action=login status=INVALID_PASSWORD user_id=%s db=%s matching_user=true", user["id"], db_path)
+        raise BridgeError("Incorrect email or password.")
+
+    LOGGER.info("Streamlit auth action=login status=SUCCESS user_id=%s db=%s matching_user=true", user["id"], db_path)
     public_user = {"id": user["id"], "email": user["email"], "name": user.get("name")}
     st.session_state["nypiel_bridge_user"] = public_user
     return {"access_token": f"streamlit-session-{user['id']}", "token_type": "bearer", "user": public_user}
@@ -237,12 +350,13 @@ def _ask(payload: Dict[str, Any]) -> Dict[str, str]:
 def handle_bridge_request(request: Dict[str, Any]) -> Any:
     action = request.get("action")
     payload = request.get("payload") or {}
-    LOGGER.info("Handling Streamlit bridge action=%s; authenticated=%s", action, bool(_user()))
+    LOGGER.info("Handling Streamlit bridge action=%s; authenticated=%s db=%s", action, bool(_user()), engine.url)
     handlers = {
         "signup": _signup,
         "login": _login,
         "logout": _logout,
         "me": lambda _: _public_user(_require_user()),
+        "diagnostics": lambda data: get_auth_diagnostics(data.get("email") if isinstance(data, dict) else None),
         "analyze": _analyze,
         "history": lambda _: list(st.session_state.get("nypiel_bridge_scans", [])),
         "getScan": lambda data: next((scan for scan in st.session_state.get("nypiel_bridge_scans", []) if scan["id"] == data.get("id")), None),
@@ -270,4 +384,5 @@ def _reset(_: Dict[str, Any]) -> Dict[str, bool]:
 def _logout(_: Dict[str, Any]) -> Dict[str, bool]:
     for key in ("nypiel_bridge_user", "nypiel_bridge_analysis", "nypiel_bridge_chat"):
         st.session_state.pop(key, None)
+    LOGGER.info("Streamlit auth action=logout db=%s", engine.url)
     return {"ok": True}
