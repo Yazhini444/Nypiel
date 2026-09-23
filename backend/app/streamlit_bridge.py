@@ -1,19 +1,33 @@
-"""Streamlit-side request handlers for the embedded React application."""
+"""Streamlit-side request handlers for the embedded React application.
+
+Persistence note:
+Streamlit Community Cloud local SQLite storage is ephemeral across container
+recreation. The SQLite database at project root persists accounts across
+Streamlit restarts and sessions within the local environment and active container,
+but permanent multi-host cloud storage requires an external database (e.g. PostgreSQL).
+"""
 import base64
-import hashlib
-import hmac
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import streamlit as st
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
+from . import models
+from .database import Base, SessionLocal, engine
 from .inference import predict_skin_concerns, predict_skin_type
+from .passwords import hash_password, verify_password
 from .recommendations import build_recommendations
 
 LOGGER = logging.getLogger(__name__)
 GEMINI_MODEL = "gemini-3.5-flash-lite"
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+Base.metadata.create_all(bind=engine)
 
 
 class BridgeError(Exception):
@@ -72,30 +86,84 @@ def _public_user(user: Dict[str, Any]) -> Dict[str, Any]:
     return {"id": user["id"], "email": user["email"], "name": user.get("name")}
 
 
+def _normalize_email(value: Any) -> str:
+    email = str(value or "").strip().lower()
+    if not email or not EMAIL_REGEX.match(email):
+        raise BridgeError("Enter a valid email address.")
+    return email
+
+
+def _stored_user(user: models.User) -> Dict[str, Any]:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "password_hash": user.hashed_password,
+        "created_at": user.created_at,
+    }
+
+
+def _find_user(email: str) -> Dict[str, Any] | None:
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(func.lower(models.User.email) == email).first()
+        return _stored_user(user) if user else None
+    finally:
+        db.close()
+
+
 def _signup(payload: Dict[str, Any]) -> Dict[str, Any]:
-    email = str(payload.get("email", "")).strip().lower()
+    email = _normalize_email(payload.get("email"))
     password = str(payload.get("password", ""))
-    if not email or len(password) < 8:
+    if len(password) < 8:
         raise BridgeError("Enter a valid email and a password of at least 8 characters.")
-    users = st.session_state.setdefault("nypiel_bridge_users", {})
-    if email in users:
-        raise BridgeError("An account with this email already exists.")
-    password_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-    user = {"id": len(users) + 1, "email": email, "name": payload.get("name"), "password_hash": password_hash}
-    users[email] = user
-    st.session_state["nypiel_bridge_user"] = user
-    return {"access_token": f"streamlit-session-{user['id']}", "token_type": "bearer", "user": _public_user(user)}
+
+    db = SessionLocal()
+    try:
+        existing = db.query(models.User).filter(func.lower(models.User.email) == email).first()
+        if existing:
+            LOGGER.info("Streamlit auth action=signup matching_user=true (email already exists)")
+            raise BridgeError("An account with this email already exists.")
+
+        user = models.User(
+            email=email,
+            name=payload.get("name") or None,
+            hashed_password=hash_password(password),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        public_user = {"id": user.id, "email": user.email, "name": user.name}
+    except BridgeError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        LOGGER.info("Streamlit auth action=signup matching_user=true (integrity error)")
+        raise BridgeError("An account with this email already exists.") from exc
+    finally:
+        db.close()
+
+    st.session_state["nypiel_bridge_user"] = public_user
+    LOGGER.info("Streamlit auth action=signup matching_user=false (account created)")
+    return {"access_token": f"streamlit-session-{public_user['id']}", "token_type": "bearer", "user": public_user}
 
 
 def _login(payload: Dict[str, Any]) -> Dict[str, Any]:
-    email = str(payload.get("email", "")).strip().lower()
-    users = st.session_state.setdefault("nypiel_bridge_users", {})
-    user = users.get(email)
-    password_hash = hashlib.sha256(str(payload.get("password", "")).encode("utf-8")).hexdigest()
-    if not user or not hmac.compare_digest(user.get("password_hash", ""), password_hash):
+    try:
+        email = _normalize_email(payload.get("email"))
+    except BridgeError:
+        LOGGER.info("Streamlit auth action=login matching_user=false (invalid email format)")
         raise BridgeError("Incorrect email or password.")
-    st.session_state["nypiel_bridge_user"] = user
-    return {"access_token": f"streamlit-session-{user['id']}", "token_type": "bearer", "user": _public_user(user)}
+
+    user = _find_user(email)
+    LOGGER.info("Streamlit auth action=login matching_user=%s", bool(user))
+    if not user or not verify_password(str(payload.get("password", "")), user["password_hash"]):
+        raise BridgeError("Incorrect email or password.")
+
+    public_user = {"id": user["id"], "email": user["email"], "name": user.get("name")}
+    st.session_state["nypiel_bridge_user"] = public_user
+    return {"access_token": f"streamlit-session-{user['id']}", "token_type": "bearer", "user": public_user}
 
 
 def _analyze(payload: Dict[str, Any]) -> Dict[str, Any]:

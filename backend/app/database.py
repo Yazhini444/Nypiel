@@ -1,6 +1,15 @@
-"""
-SQLite by default (zero-config, file: nypiel.db). Swap DATABASE_URL for
-Postgres/MySQL in production — nothing else in the app needs to change.
+"""Shared SQLAlchemy database configuration for FastAPI and Streamlit.
+
+SQLite is the zero-config default. Set DATABASE_URL to use another database
+or to place SQLite on a persistent mounted volume in deployment.
+
+Streamlit Community Cloud persistence note:
+The local SQLite filesystem on Streamlit Community Cloud is ephemeral across
+app/container recreations and restarts. Local SQLite storage provides session
+and container lifecycle persistence during local development and active
+containers, but is not guaranteed permanent account storage across container
+rebuilds or redeployments. For permanent multi-instance cloud persistence,
+configure DATABASE_URL to point to a managed database (e.g., PostgreSQL).
 """
 import os
 from pathlib import Path

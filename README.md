@@ -69,6 +69,25 @@ won't need to change.
 Auth is JWT-based (`Authorization: Bearer <token>`), 1-week expiry.
 Set a real `NYPIEL_SECRET_KEY` env var in production.
 
+### Streamlit authentication and storage
+
+The deployed Streamlit app uses the same SQLAlchemy `users` table and bcrypt
+password hashes as the standalone FastAPI app. By default both use
+`nypiel.db` at the repository root. Existing FastAPI users remain compatible
+when that database file is available to Streamlit; no accounts are migrated
+or deleted automatically.
+
+Set `DATABASE_URL` when Streamlit should use a different SQLite file or an
+external database, for example `sqlite:////mounted/path/nypiel.db`. The
+database file is not committed because it may contain account data.
+
+Streamlit Community Cloud does not guarantee persistence for files written to
+the app container. The default SQLite file can therefore be lost when the
+app/container is recreated. Use a persistent external database or mounted
+storage supported by the deployment environment if accounts must survive
+recreation; otherwise this deployment should be treated as development or
+best-effort storage.
+
 ## 2. Frontend
 
 ```bash

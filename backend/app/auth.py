@@ -1,6 +1,5 @@
 import os
 import datetime
-import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .database import get_db
+from .passwords import hash_password, verify_password
 
 # In production, set NYPIEL_SECRET_KEY as a real env var / secret — never hardcode it.
 SECRET_KEY = os.getenv("NYPIEL_SECRET_KEY", "dev-only-change-me")
@@ -15,17 +15,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-# Hashing via bcrypt directly (bcrypt truncates at 72 bytes by design).
-def hash_password(password: str) -> str:
-    pw = password.encode("utf-8")[:72]
-    return bcrypt.hashpw(pw, bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    pw = plain.encode("utf-8")[:72]
-    return bcrypt.checkpw(pw, hashed.encode("utf-8"))
-
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()

@@ -1,6 +1,6 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 from .database import Base
 
 
@@ -13,7 +13,15 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+    # password_hash synonym for compatibility with both naming conventions
+    password_hash = synonym("hashed_password")
+
     scans = relationship("ScanResult", back_populates="owner", cascade="all, delete-orphan")
+
+    def __init__(self, **kwargs):
+        if "password_hash" in kwargs and "hashed_password" not in kwargs:
+            kwargs["hashed_password"] = kwargs.pop("password_hash")
+        super().__init__(**kwargs)
 
 
 class ScanResult(Base):
